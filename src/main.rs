@@ -167,6 +167,9 @@ async fn update_ips() -> miette::Result<()> {
 
 async fn update_ips_repeatedly(every: std::time::Duration) -> miette::Result<()> {
     let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .into_diagnostic()
+        .wrap_err("failed to install SIGTERM handler")?;
 
     loop {
         tracing::info!("updating IPs");
@@ -177,6 +180,10 @@ async fn update_ips_repeatedly(every: std::time::Duration) -> miette::Result<()>
             result = &mut ctrl_c => {
                 result.into_diagnostic().wrap_err("Ctrl-C handler failed")?;
                 tracing::info!("received Ctrl-C signal, shutting down...");
+                return Ok(());
+            }
+            Some(()) = sigterm.recv() => {
+                tracing::info!("received SIGTERM signal, shutting down...");
                 return Ok(());
             }
             _ = tokio::time::sleep(every) => {
