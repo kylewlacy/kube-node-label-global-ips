@@ -620,7 +620,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kube-node-label-global-ips"
+name = "kube-node-annotate-ips"
 version = "0.1.0"
 dependencies = [
  "clap",

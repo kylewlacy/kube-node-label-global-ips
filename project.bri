@@ -1,13 +1,13 @@
 import * as std from "std";
 import { cargoBuild } from "rust";
 
-export default function kubeNodeLabelGlobalIps(): std.Recipe<std.Directory> {
+export default function kubeNodeAnnotateIps(): std.Recipe<std.Directory> {
   return cargoBuild({
     source: Brioche.glob("Cargo.lock", "Cargo.toml", "src"),
   });
 }
 
 export const container = std.ociContainerImage({
-  recipe: kubeNodeLabelGlobalIps,
-  entrypoint: ["bin/kube-node-label-global-ips"],
+  recipe: kubeNodeAnnotateIps,
+  entrypoint: ["bin/kube-node-annotate-ips"],
 });

@@ -5,9 +5,9 @@ use joinery::Joinable as _;
 use miette::{Context as _, IntoDiagnostic as _};
 use network_interface::NetworkInterfaceConfig as _;
 
-const FIELD_MANAGER_NAME: &str = "kube-node-label-global-ips";
+const FIELD_MANAGER_NAME: &str = "kube-node-annotate-ips";
 
-const GLOBAL_IPS_LABEL: &str = "external-dns.alpha.kubernetes.io/target";
+const IPS_ANNOTATION: &str = "external-dns.alpha.kubernetes.io/target";
 
 const MAX_RETRIES: u32 = 10;
 
@@ -137,13 +137,13 @@ async fn update_ips() -> miette::Result<()> {
             .metadata
             .annotations
             .as_ref()
-            .and_then(|annotations| annotations.get(GLOBAL_IPS_LABEL));
+            .and_then(|annotations| annotations.get(IPS_ANNOTATION));
         if current_ip_list == Some(&global_ip_list) {
             tracing::info!(
                 node = node_name,
                 global_ip_list,
-                label = GLOBAL_IPS_LABEL,
-                "node label already up-to-date"
+                annotation = IPS_ANNOTATION,
+                "node IP annotation already up-to-date"
             );
             return Ok(());
         } else {
@@ -152,7 +152,7 @@ async fn update_ips() -> miette::Result<()> {
                 .metadata
                 .annotations
                 .get_or_insert_default()
-                .insert(GLOBAL_IPS_LABEL.to_string(), global_ip_list.clone());
+                .insert(IPS_ANNOTATION.to_string(), global_ip_list.clone());
 
             let result = node_entry
                 .commit(&kube::api::PostParams {
@@ -165,8 +165,8 @@ async fn update_ips() -> miette::Result<()> {
                     tracing::info!(
                         node = node_name,
                         global_ip_list,
-                        label = GLOBAL_IPS_LABEL,
-                        "updated node label with global IPs"
+                        annotation = IPS_ANNOTATION,
+                        "updated node annotation with global IPs"
                     );
                     return Ok(());
                 }
