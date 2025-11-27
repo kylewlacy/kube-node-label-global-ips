@@ -280,12 +280,11 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
         ));
     }
 
-    let mut hosted_zone_domains_by_hosted_zone_id = HashMap::<String, Vec<_>>::new();
+    let mut domains_by_hosted_zone_id = HashMap::<String, Vec<_>>::new();
     for domain in domains {
         let hosted_zone_domain = find_hosted_zone_for_domain(&public_hosted_zones, domain)?;
-        let hosted_zone_id = &hosted_zone_domain.hosted_zone.id;
-        hosted_zone_domains_by_hosted_zone_id
-            .entry(hosted_zone_id.clone())
+        domains_by_hosted_zone_id
+            .entry(hosted_zone_domain.hosted_zone_id.clone())
             .or_default()
             .push(hosted_zone_domain);
     }
@@ -297,7 +296,7 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
     let nodes = kube::Api::<Node>::all(kube);
 
     let mut state = DnsPublisher {
-        hosted_zone_domains_by_hosted_zone_id,
+        domains_by_hosted_zone_id,
         nodes: HashMap::new(),
     };
     let mut pending_changes = false;
@@ -360,21 +359,11 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
             // The watcher is up-to-date with current events and we have
             // some pending changes, so publish them
 
-            for (hosted_zone_id, domains) in &state.hosted_zone_domains_by_hosted_zone_id {
-                tracing::info!(
-                    hosted_zone_id,
-                    domains = ?domains
-                        .iter()
-                        .map(|domain| &domain.domain)
-                        .collect::<Vec<_>>(),
-                    record_names = ?domains
-                        .iter()
-                        .map(|domain| &domain.record_name)
-                        .collect::<Vec<_>>(),
-                    nodes = ?state.nodes,
-                    "(todo) publish DNS for nodes",
-                );
-            }
+            tracing::info!(
+                domains = ?state.domains_by_hosted_zone_id,
+                nodes = ?state.nodes,
+                "(todo) publish DNS for nodes",
+            );
 
             pending_changes = false;
         }
@@ -387,7 +376,7 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
 
 struct DnsPublisher {
     nodes: HashMap<String, NodePublishState>,
-    hosted_zone_domains_by_hosted_zone_id: HashMap<String, Vec<HostedZoneDomain>>,
+    domains_by_hosted_zone_id: HashMap<String, Vec<HostedZoneDomain>>,
 }
 
 impl DnsPublisher {
@@ -587,9 +576,11 @@ impl std::str::FromStr for Coordinates {
     }
 }
 
+#[derive(Debug, Clone)]
 struct HostedZoneDomain {
     domain: String,
-    hosted_zone: aws_sdk_route53::types::HostedZone,
+    hosted_zone_name: String,
+    hosted_zone_id: String,
     record_name: String,
 }
 
@@ -602,7 +593,8 @@ fn find_hosted_zone_for_domain(
         if hosted_zone_domain == domain {
             Some(HostedZoneDomain {
                 domain: domain.to_string(),
-                hosted_zone: hosted_zone.clone(),
+                hosted_zone_name: hosted_zone.name.clone(),
+                hosted_zone_id: hosted_zone.id.clone(),
                 record_name: "@".to_string(),
             })
         } else if let Some((rest, "")) = domain.rsplit_once(&hosted_zone_domain)
@@ -610,7 +602,8 @@ fn find_hosted_zone_for_domain(
         {
             Some(HostedZoneDomain {
                 domain: domain.to_string(),
-                hosted_zone: hosted_zone.clone(),
+                hosted_zone_name: hosted_zone.name.clone(),
+                hosted_zone_id: hosted_zone.id.clone(),
                 record_name: record_name.to_string(),
             })
         } else {
@@ -619,7 +612,7 @@ fn find_hosted_zone_for_domain(
     });
 
     let hosted_zone_domain = hosted_zone_domains
-        .max_by_key(|hosted_zone_domain| hosted_zone_domain.hosted_zone.name.len())
+        .max_by_key(|hosted_zone_domain| hosted_zone_domain.hosted_zone_name.len())
         .wrap_err_with(|| format!("no hosted zone found for domain: {domain}"))?;
     Ok(hosted_zone_domain)
 }
