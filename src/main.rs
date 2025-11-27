@@ -812,7 +812,7 @@ async fn list_route53_resource_record_sets(
 
         all_record_sets.extend(record_sets.resource_record_sets);
 
-        if record_sets.is_truncated {
+        if !record_sets.is_truncated {
             break;
         }
 
