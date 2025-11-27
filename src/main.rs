@@ -302,14 +302,28 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
         node_watch_config = node_watch_config.labels(node_selector);
     }
 
+    let mut shutdown_signal = shutdown_signal();
     let node_stream = kube::runtime::watcher(nodes, node_watch_config);
     let mut node_stream = std::pin::pin!(node_stream);
-    while let Some(event) = node_stream.next().await {
+
+    loop {
+        let event = tokio::select! {
+            result = &mut shutdown_signal => {
+                result.into_diagnostic().wrap_err("error receiving shutdown signal")?.wrap_err("error handling shutdown signal")?;
+                tracing::info!("received shutdown signal, shutting down...");
+                return Ok(());
+            }
+            event = node_stream.next() => event,
+        };
         let event = match event {
-            Ok(event) => event,
-            Err(error) => {
+            Some(Ok(event)) => event,
+            Some(Err(error)) => {
                 tracing::error!("error in node watch stream: {error:?}");
                 continue;
+            }
+            None => {
+                // Stream ended
+                break;
             }
         };
 
