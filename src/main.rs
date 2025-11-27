@@ -240,10 +240,7 @@ fn set_annotation(
 }
 
 async fn update_nodes_repeatedly(every: std::time::Duration) -> miette::Result<()> {
-    let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .into_diagnostic()
-        .wrap_err("failed to install SIGTERM handler")?;
+    let mut shutdown_signal = shutdown_signal();
 
     tracing::info!("updating IPs every {}", humantime::format_duration(every));
 
@@ -251,13 +248,9 @@ async fn update_nodes_repeatedly(every: std::time::Duration) -> miette::Result<(
         update_nodes().await?;
 
         tokio::select! {
-            result = &mut ctrl_c => {
-                result.into_diagnostic().wrap_err("Ctrl-C handler failed")?;
-                tracing::info!("received Ctrl-C signal, shutting down...");
-                return Ok(());
-            }
-            Some(()) = sigterm.recv() => {
-                tracing::info!("received SIGTERM signal, shutting down...");
+            result = &mut shutdown_signal => {
+                result.into_diagnostic().wrap_err("error receiving shutdown signal")?.wrap_err("error handling shutdown signal")?;
+                tracing::info!("received shutdown signal, shutting down...");
                 return Ok(());
             }
             _ = tokio::time::sleep(every) => {
@@ -551,4 +544,36 @@ fn remove_fqdn_trailing_dot(domain: &str) -> &str {
         Some((domain, "")) => domain,
         _ => domain,
     }
+}
+
+fn shutdown_signal() -> tokio::sync::oneshot::Receiver<miette::Result<()>> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<miette::Result<()>>();
+
+    tokio::task::spawn(async move {
+        let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
+
+        let sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
+        let mut sigterm = match sigterm {
+            Ok(sigterm) => sigterm,
+            Err(error) => {
+                let _ = tx.send(
+                    Err(error)
+                        .into_diagnostic()
+                        .wrap_err("failed to install SIGTERM handler"),
+                );
+                return;
+            }
+        };
+
+        tokio::select! {
+            result = &mut ctrl_c => {
+                let _ = tx.send(result.into_diagnostic().wrap_err("Ctrl-C handler failed"));
+            }
+            Some(()) = sigterm.recv() => {
+                let _ = tx.send(Ok(()));
+            }
+        }
+    });
+
+    rx
 }
