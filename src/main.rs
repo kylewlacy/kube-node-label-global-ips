@@ -368,10 +368,15 @@ async fn run_dns_publisher(domains: &[String], node_selector: Option<&str>) -> m
                 )
                 .await?;
             }
+
             tracing::info!(
-                domains = ?state.domains_by_hosted_zone_id,
-                nodes = ?state.nodes,
-                "(todo) publish DNS for nodes",
+                domains = ?state
+                    .domains_by_hosted_zone_id
+                    .values()
+                    .flatten()
+                    .map(|domain| &domain.domain)
+                    .collect::<Vec<_>>(),
+                "finished publishing DNS records to Route53"
             );
 
             pending_changes = false;
