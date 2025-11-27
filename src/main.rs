@@ -623,7 +623,6 @@ struct HostedZoneDomain {
     domain: String,
     hosted_zone_name: String,
     hosted_zone_id: String,
-    record_name: String,
 }
 
 fn find_hosted_zone_for_domain(
@@ -637,16 +636,14 @@ fn find_hosted_zone_for_domain(
                 domain: domain.to_string(),
                 hosted_zone_name: hosted_zone.name.clone(),
                 hosted_zone_id: hosted_zone.id.clone(),
-                record_name: "@".to_string(),
             })
         } else if let Some((rest, "")) = domain.rsplit_once(&hosted_zone_domain)
-            && let Some((record_name, "")) = rest.rsplit_once('.')
+            && let Some((_record_name, "")) = rest.rsplit_once('.')
         {
             Some(HostedZoneDomain {
                 domain: domain.to_string(),
                 hosted_zone_name: hosted_zone.name.clone(),
                 hosted_zone_id: hosted_zone.id.clone(),
-                record_name: record_name.to_string(),
             })
         } else {
             None
