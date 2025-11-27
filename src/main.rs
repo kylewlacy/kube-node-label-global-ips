@@ -389,7 +389,15 @@ impl DnsPublisher {
                 let node_state = match node_state {
                     NodeState::Publish(node_state) => Some(node_state),
                     NodeState::NoIps => {
-                        tracing::debug!(node = name, "node does not have annotation with IPs");
+                        tracing::info!(node = name, "node does not have annotation with IPs");
+                        None
+                    }
+                    NodeState::Unschedulable => {
+                        tracing::info!(node = name, "node is marked unschedulable");
+                        None
+                    }
+                    NodeState::NotReady { ready_status } => {
+                        tracing::info!(node = name, ?ready_status, "node is not ready");
                         None
                     }
                 };
@@ -451,6 +459,8 @@ impl DnsPublisher {
 enum NodeState {
     Publish(NodePublishState),
     NoIps,
+    Unschedulable,
+    NotReady { ready_status: Option<String> },
 }
 
 impl NodeState {
@@ -460,6 +470,34 @@ impl NodeState {
             .name
             .as_ref()
             .wrap_err("node metadata is missing 'name' field")?;
+
+        let is_unschedulable = node
+            .spec
+            .as_ref()
+            .and_then(|spec| spec.unschedulable)
+            .unwrap_or(false);
+        if is_unschedulable {
+            return Ok(Self::Unschedulable);
+        }
+
+        let node_conditions = node
+            .status
+            .as_ref()
+            .and_then(|status| status.conditions.as_deref())
+            .unwrap_or_default();
+        let ready_status = node_conditions.iter().find_map(|condition| {
+            if condition.type_ == "Ready" {
+                Some(&condition.status)
+            } else {
+                None
+            }
+        });
+        let is_ready = ready_status.is_none_or(|status| status == "True");
+        if !is_ready {
+            return Ok(Self::NotReady {
+                ready_status: ready_status.cloned(),
+            });
+        }
 
         let ips = node
             .metadata
