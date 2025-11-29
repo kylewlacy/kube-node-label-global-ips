@@ -143,12 +143,9 @@ async fn annotate_node() -> miette::Result<()> {
     let node_name = std::env::var("KUBE_NODE_NAME")
         .into_diagnostic()
         .wrap_err("$KUBE_NODE_NAME must be set")?;
-    let node_annotation_ips = std::env::var("KUBE_NODE_ANNOTATION_IPS").ok();
-    let node_annotation_node_name = std::env::var("KUBE_NODE_ANNOTATION_NODE_NAME").ok();
-    miette::ensure!(
-        node_annotation_ips.is_some() || node_annotation_node_name.is_some(),
-        "no annotations are enabled"
-    );
+    let node_annotation_ips = std::env::var("KUBE_NODE_ANNOTATION_IPS")
+        .into_diagnostic()
+        .wrap_err("$KUBE_NODE_ANNOTATION_IPS not set")?;
 
     let kube = kube::Client::try_default()
         .await
@@ -168,43 +165,23 @@ async fn annotate_node() -> miette::Result<()> {
             miette::bail!("node not found: {node_name:?}");
         };
 
-        if let Some(annotation) = &node_annotation_ips {
-            let global_ips = get_ips().await?;
-            let global_ip_list = global_ips.join_with(",").to_string();
+        let global_ips = get_ips().await?;
+        let global_ip_list = global_ips.join_with(",").to_string();
 
-            if set_annotation(node_entry, &annotation, &global_ip_list) {
-                tracing::info!(
-                    node = node_name,
-                    global_ip_list,
-                    annotation,
-                    "updated node annotation with IPs"
-                );
-            } else {
-                tracing::info!(
-                    node = node_name,
-                    global_ip_list,
-                    annotation,
-                    "node IP annotation already up-to-date"
-                );
-            }
-        }
-
-        if let Some(annotation) = &node_annotation_node_name {
-            if set_annotation(node_entry, &annotation, &node_name) {
-                tracing::info!(
-                    node = node_name,
-                    name = node_name,
-                    annotation,
-                    "updated node annotation with node name"
-                );
-            } else {
-                tracing::info!(
-                    node = node_name,
-                    name = node_name,
-                    annotation,
-                    "node name annotation already up-to-date"
-                );
-            }
+        if set_annotation(node_entry, &node_annotation_ips, &global_ip_list) {
+            tracing::info!(
+                node = node_name,
+                global_ip_list,
+                annotation = node_annotation_ips,
+                "updated node annotation with IPs"
+            );
+        } else {
+            tracing::info!(
+                node = node_name,
+                global_ip_list,
+                annotation = node_annotation_ips,
+                "node IP annotation already up-to-date"
+            );
         }
 
         let result = node_entry
